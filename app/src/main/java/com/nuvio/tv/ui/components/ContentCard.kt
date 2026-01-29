@@ -47,50 +47,51 @@ fun ContentCard(
     var isFocused by remember { mutableStateOf(false) }
 
     val cardWidth = when (item.posterShape) {
-        PosterShape.POSTER -> 150.dp
-        PosterShape.LANDSCAPE -> 280.dp
-        PosterShape.SQUARE -> 180.dp
+        PosterShape.POSTER -> 120.dp
+        PosterShape.LANDSCAPE -> 240.dp
+        PosterShape.SQUARE -> 140.dp
     }
     val cardHeight = when (item.posterShape) {
-        PosterShape.POSTER -> 225.dp
-        PosterShape.LANDSCAPE -> 158.dp
-        PosterShape.SQUARE -> 180.dp
+        PosterShape.POSTER -> 180.dp
+        PosterShape.LANDSCAPE -> 135.dp
+        PosterShape.SQUARE -> 140.dp
     }
 
-    Card(
-        onClick = onClick,
-        modifier = modifier
-            .width(cardWidth)
-            .onFocusChanged { isFocused = it.isFocused },
-        shape = CardDefaults.shape(
-            shape = RoundedCornerShape(8.dp)
-        ),
-        colors = CardDefaults.colors(
-            containerColor = NuvioColors.BackgroundCard,
-            focusedContainerColor = NuvioColors.BackgroundCard
-        ),
-        border = CardDefaults.border(
-            focusedBorder = Border(
-                border = BorderStroke(3.dp, NuvioColors.FocusRing),
-                shape = RoundedCornerShape(8.dp)
-            )
-        ),
-        scale = CardDefaults.scale(
-            focusedScale = 1.08f
-        ),
-        glow = CardDefaults.glow(
-            focusedGlow = Glow(
-                elevation = 8.dp,
-                elevationColor = NuvioColors.FocusRing.copy(alpha = 0.3f)
-            )
-        )
+    Column(
+        modifier = modifier.width(cardWidth)
     ) {
-        Column {
+        Card(
+            onClick = onClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged { isFocused = it.isFocused },
+            shape = CardDefaults.shape(
+                shape = RoundedCornerShape(8.dp)
+            ),
+            colors = CardDefaults.colors(
+                containerColor = NuvioColors.BackgroundCard,
+                focusedContainerColor = NuvioColors.BackgroundCard
+            ),
+            border = CardDefaults.border(
+                focusedBorder = Border(
+                    border = BorderStroke(3.dp, NuvioColors.FocusRing),
+                    shape = RoundedCornerShape(8.dp)
+                )
+            ),
+            scale = CardDefaults.scale(
+                focusedScale = 1.08f
+            ),
+            glow = CardDefaults.glow(
+                focusedGlow = Glow(
+                    elevation = 8.dp,
+                    elevationColor = NuvioColors.FocusRing.copy(alpha = 0.3f)
+                )
+            )
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(cardHeight)
-                    .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
             ) {
                 AsyncImage(
                     model = item.poster,
@@ -126,29 +127,29 @@ fun ContentCard(
                     }
                 }
             }
+        }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
-            ) {
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Column(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = item.name,
+                style = MaterialTheme.typography.titleSmall,
+                color = NuvioColors.TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            item.releaseInfo?.let { release ->
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = item.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = NuvioColors.TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    text = release,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NuvioTheme.extendedColors.textSecondary,
+                    maxLines = 1
                 )
-
-                item.releaseInfo?.let { release ->
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = release,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = NuvioTheme.extendedColors.textSecondary,
-                        maxLines = 1
-                    )
-                }
             }
         }
     }
