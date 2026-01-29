@@ -1,6 +1,6 @@
 [versions]
 agp = "8.13.2"
-kotlin = "2.0.21"
+kotlin = "2.3.0"
 coreKtx = "1.10.1"
 appcompat = "1.6.1"
 composeBom = "2024.09.00"
@@ -10,7 +10,7 @@ lifecycleRuntimeKtx = "2.6.1"
 activityCompose = "1.8.0"
 
 # New dependencies
-hilt = "2.51.1"
+hilt = "2.58"
 hiltNavigationCompose = "1.2.0"
 retrofit = "2.9.0"
 okhttp = "4.12.0"
@@ -20,8 +20,11 @@ coil = "2.6.0"
 navigationCompose = "2.7.7"
 datastore = "1.1.1"
 lifecycleViewModelCompose = "2.8.0"
-ksp = "2.0.21-1.0.27"
+ksp = "2.3.0"
 media3 = "1.9.1"
+quickjsKt = "1.0.1"
+jsoup = "1.17.2"
+gson = "2.10.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -74,6 +77,11 @@ media3-exoplayer-dash = { group = "androidx.media3", name = "media3-exoplayer-da
 media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
 media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "media3" }
 media3-common = { group = "androidx.media3", name = "media3-common", version.ref = "media3" }
+
+# Local Plugin System
+quickjs-kt = { group = "io.github.dokar3", name = "quickjs-kt-android", version.ref = "quickjsKt" }
+jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
+gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

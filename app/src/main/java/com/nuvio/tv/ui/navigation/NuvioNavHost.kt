@@ -10,6 +10,7 @@ import com.nuvio.tv.ui.screens.detail.MetaDetailsScreen
 import com.nuvio.tv.ui.screens.home.HomeScreen
 import com.nuvio.tv.ui.screens.addon.AddonManagerScreen
 import com.nuvio.tv.ui.screens.player.PlayerScreen
+import com.nuvio.tv.ui.screens.plugin.PluginScreen
 import com.nuvio.tv.ui.screens.search.SearchScreen
 import com.nuvio.tv.ui.screens.settings.SettingsScreen
 import com.nuvio.tv.ui.screens.stream.StreamScreen
@@ -146,11 +147,19 @@ fun NuvioNavHost(
         }
 
         composable(Screen.Settings.route) {
-            SettingsScreen()
+            SettingsScreen(
+                onNavigateToPlugins = { navController.navigate(Screen.Plugins.route) }
+            )
         }
 
         composable(Screen.AddonManager.route) {
             AddonManagerScreen()
+        }
+
+        composable(Screen.Plugins.route) {
+            PluginScreen(
+                onBackPress = { navController.popBackStack() }
+            )
         }
     }
 }

@@ -54,4 +54,5 @@ sealed class Screen(val route: String) {
     data object Search : Screen("search")
     data object Settings : Screen("settings")
     data object AddonManager : Screen("addon_manager")
+    data object Plugins : Screen("plugins")
 }
