@@ -24,6 +24,9 @@ data class MetaDto(
     @Json(name = "runtime") val runtime: String? = null,
     // Stremio addons are inconsistent here (string vs list). Keep it tolerant.
     @Json(name = "director") val director: Any? = null,
+    // Addons are inconsistent: may be `writer` (string/list) or `writers`.
+    @Json(name = "writer") val writer: Any? = null,
+    @Json(name = "writers") val writers: Any? = null,
     @Json(name = "cast") val cast: Any? = null,
     @Json(name = "videos") val videos: List<VideoDto>? = null,
     @Json(name = "country") val country: String? = null,

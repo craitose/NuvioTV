@@ -25,6 +25,7 @@ fun MetaDto.toDomain(): Meta {
         genres = genres ?: emptyList(),
         runtime = runtime,
         director = coerceStringList(director),
+        writer = coerceStringList(writer).ifEmpty { coerceStringList(writers) },
         cast = coerceStringList(cast),
         castMembers = appExtras?.cast
             .orEmpty()

@@ -56,7 +56,7 @@ fun HeroContentSection(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 48.dp, end = 48.dp, bottom = 32.dp),
+                .padding(start = 48.dp, end = 48.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.Bottom
         ) {
             if (meta.logo != null) {
@@ -78,13 +78,6 @@ fun HeroContentSection(
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
-
-            Text(
-                text = "Via Stremio Addons",
-                style = MaterialTheme.typography.labelMedium,
-                color = NuvioTheme.extendedColors.textSecondary,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -113,6 +106,29 @@ fun HeroContentSection(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            // Director/Writer line above description
+            val directorLine = meta.director.takeIf { it.isNotEmpty() }?.joinToString(", ")
+            val writerLine = meta.writer.takeIf { it.isNotEmpty() }?.joinToString(", ")
+            val creditLine = if (!directorLine.isNullOrBlank()) {
+                "Director: $directorLine"
+            } else if (!writerLine.isNullOrBlank()) {
+                "Writer: $writerLine"
+            } else {
+                null
+            }
+
+            if (!creditLine.isNullOrBlank()) {
+                Text(
+                    text = creditLine,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = NuvioTheme.extendedColors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(0.6f)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
             // Always show series/movie description, not episode description
             if (meta.description != null) {
@@ -208,77 +224,79 @@ private fun ActionIconButton(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun MetaInfoRow(meta: Meta) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (meta.genres.isNotEmpty()) {
-            Text(
-                text = meta.genres.firstOrNull() ?: "",
-                style = MaterialTheme.typography.labelMedium,
-                color = NuvioTheme.extendedColors.textSecondary
-            )
-            MetaInfoDivider()
-        }
-
-        meta.releaseInfo?.let { releaseInfo ->
-            Text(
-                text = releaseInfo,
-                style = MaterialTheme.typography.labelMedium,
-                color = NuvioTheme.extendedColors.textSecondary
-            )
-            MetaInfoDivider()
-        }
-
-        meta.imdbRating?.let { rating ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
+    Column {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (meta.genres.isNotEmpty()) {
                 Text(
-                    text = "⬥",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = androidx.compose.ui.graphics.Color(0xFF5799EF)
-                )
-                Text(
-                    text = rating.toInt().toString(),
-                    style = MaterialTheme.typography.labelMedium,
+                    text = meta.genres.firstOrNull() ?: "",
+                    style = MaterialTheme.typography.labelLarge,
                     color = NuvioTheme.extendedColors.textSecondary
                 )
+                MetaInfoDivider()
             }
-            MetaInfoDivider()
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
+            meta.releaseInfo?.let { releaseInfo ->
                 Text(
-                    text = "★",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = NuvioTheme.extendedColors.rating
-                )
-                Text(
-                    text = String.format("%.1f", rating),
-                    style = MaterialTheme.typography.labelMedium,
+                    text = releaseInfo,
+                    style = MaterialTheme.typography.labelLarge,
                     color = NuvioTheme.extendedColors.textSecondary
                 )
+                MetaInfoDivider()
             }
-            MetaInfoDivider()
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = "●",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = androidx.compose.ui.graphics.Color(0xFFE74C3C)
-                )
-                Text(
-                    text = "${(rating * 10).toInt()}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = NuvioTheme.extendedColors.textSecondary
-                )
+            meta.imdbRating?.let { rating ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "⬥",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = androidx.compose.ui.graphics.Color(0xFF5799EF)
+                    )
+                    Text(
+                        text = rating.toInt().toString(),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = NuvioTheme.extendedColors.textSecondary
+                    )
+                }
+                MetaInfoDivider()
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "★",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = NuvioTheme.extendedColors.rating
+                    )
+                    Text(
+                        text = String.format("%.1f", rating),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = NuvioTheme.extendedColors.textSecondary
+                    )
+                }
+                MetaInfoDivider()
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "●",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = androidx.compose.ui.graphics.Color(0xFFE74C3C)
+                    )
+                    Text(
+                        text = "${(rating * 10).toInt()}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = NuvioTheme.extendedColors.textSecondary
+                    )
+                }
             }
         }
     }
@@ -289,7 +307,7 @@ private fun MetaInfoRow(meta: Meta) {
 private fun MetaInfoDivider() {
     Text(
         text = "•",
-        style = MaterialTheme.typography.labelMedium,
+        style = MaterialTheme.typography.labelLarge,
         color = NuvioTheme.extendedColors.textTertiary
     )
 }

@@ -14,6 +14,7 @@ data class Meta(
     val genres: List<String>,
     val runtime: String?,
     val director: List<String>,
+    val writer: List<String> = emptyList(),
     val cast: List<String>,
     val castMembers: List<MetaCastMember> = emptyList(),
     val videos: List<Video>,
