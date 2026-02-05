@@ -102,8 +102,8 @@ fun LayoutSettingsScreen(
             )
         }
 
-        // Hero catalog selector (only visible for Grid mode)
-        if (uiState.selectedLayout == HomeLayout.GRID && uiState.availableCatalogs.isNotEmpty()) {
+        // Hero catalog selector
+        if (uiState.availableCatalogs.isNotEmpty()) {
             Spacer(modifier = Modifier.height(32.dp))
 
             Text(
