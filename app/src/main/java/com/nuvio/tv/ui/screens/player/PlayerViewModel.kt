@@ -1,6 +1,7 @@
 package com.nuvio.tv.ui.screens.player
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,9 +18,17 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.common.MimeTypes
+import com.nuvio.tv.data.local.BufferSettings
 import com.nuvio.tv.core.network.NetworkResult
+import okhttp3.ConnectionPool
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import java.util.concurrent.TimeUnit
 import com.nuvio.tv.data.local.LibassRenderType
 import com.nuvio.tv.data.local.PlayerSettingsDataStore
 import com.nuvio.tv.domain.model.Stream
@@ -60,6 +69,10 @@ class PlayerViewModel @Inject constructor(
     private val playerSettingsDataStore: PlayerSettingsDataStore,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "PlayerViewModel"
+    }
 
     private val initialStreamUrl: String = savedStateHandle.get<String>("streamUrl")?.let {
         URLDecoder.decode(it, "UTF-8")
@@ -145,6 +158,11 @@ class PlayerViewModel @Inject constructor(
     private var lastActiveSkipType: String? = null
     private var autoSubtitleSelected: Boolean = false
     private var pendingAddonSubtitleLanguage: String? = null
+
+    // OkHttp client for media downloads
+    private var okHttpClient: OkHttpClient? = null
+    private var currentUseParallelConnections: Boolean = true
+    private var lastBufferLogTimeMs: Long = 0L
 
     init {
         initializePlayer(currentStreamUrl, currentHeaders)
@@ -346,6 +364,38 @@ class PlayerViewModel @Inject constructor(
                 val playerSettings = playerSettingsDataStore.playerSettings.first()
                 val useLibass = playerSettings.useLibass
                 val libassRenderType = playerSettings.libassRenderType.toAssRenderType()
+                val bufferSettings = playerSettings.bufferSettings
+                currentUseParallelConnections = bufferSettings.useParallelConnections
+
+                // Calculate target buffer bytes
+                val targetBufferBytes = if (bufferSettings.targetBufferSizeMb == 0) {
+                    // Auto: 60% of free heap at init time
+                    val runtime = Runtime.getRuntime()
+                    val freeHeap = runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())
+                    val sixtyPercent = (freeHeap * 0.60).toLong()
+                    sixtyPercent.coerceIn(50L * 1024 * 1024, 1000L * 1024 * 1024).toInt()
+                } else {
+                    bufferSettings.targetBufferSizeMb * 1024 * 1024
+                }
+
+                val loadControl = DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        bufferSettings.minBufferMs,
+                        bufferSettings.maxBufferMs,
+                        bufferSettings.bufferForPlaybackMs,
+                        bufferSettings.bufferForPlaybackAfterRebufferMs
+                    )
+                    .setTargetBufferBytes(targetBufferBytes)
+                    .setBackBuffer(
+                        bufferSettings.backBufferDurationMs,
+                        bufferSettings.retainBackBufferFromKeyframe
+                    )
+                    .setPrioritizeTimeOverSizeThresholds(false)
+                    .build()
+
+                val bandwidthMeter = DefaultBandwidthMeter.Builder(context)
+                    .setInitialBitrateEstimate(50_000_000L) // 50 Mbps initial estimate
+                    .build()
 
                 val renderersFactory = DefaultRenderersFactory(context)
                     .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
@@ -353,6 +403,8 @@ class PlayerViewModel @Inject constructor(
                 _exoPlayer = if (useLibass) {
                     // Build ExoPlayer with libass support for ASS/SSA subtitles
                     ExoPlayer.Builder(context)
+                        .setLoadControl(loadControl)
+                        .setBandwidthMeter(bandwidthMeter)
                         .buildWithAssSupport(
                             context = context,
                             renderType = libassRenderType,
@@ -362,6 +414,8 @@ class PlayerViewModel @Inject constructor(
                     // Standard ExoPlayer without libass
                     ExoPlayer.Builder(context)
                         .setRenderersFactory(renderersFactory)
+                        .setLoadControl(loadControl)
+                        .setBandwidthMeter(bandwidthMeter)
                         .build()
                 }
 
@@ -443,8 +497,21 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    @OptIn(UnstableApi::class)
+    private fun getOrCreateOkHttpClient(): OkHttpClient {
+        return okHttpClient ?: OkHttpClient.Builder()
+            .connectTimeout(8000, TimeUnit.MILLISECONDS)
+            .readTimeout(8000, TimeUnit.MILLISECONDS)
+            .protocols(listOf(Protocol.HTTP_1_1))
+            .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
+            .retryOnConnectionFailure(true)
+            .build()
+            .also { okHttpClient = it }
+    }
+
+    @OptIn(UnstableApi::class)
     private fun createMediaSource(url: String, headers: Map<String, String>): MediaSource {
-        val dataSourceFactory = DefaultHttpDataSource.Factory().apply {
+        val okHttpFactory = OkHttpDataSource.Factory(getOrCreateOkHttpClient()).apply {
             setDefaultRequestProperties(headers)
             setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         }
@@ -466,13 +533,21 @@ class PlayerViewModel @Inject constructor(
         val mediaItem = mediaItemBuilder.build()
 
         return when {
-            isHls -> HlsMediaSource.Factory(dataSourceFactory)
+            isHls -> HlsMediaSource.Factory(okHttpFactory)
                 .setAllowChunklessPreparation(true)
                 .createMediaSource(mediaItem)
-            isDash -> DashMediaSource.Factory(dataSourceFactory)
+            isDash -> DashMediaSource.Factory(okHttpFactory)
                 .createMediaSource(mediaItem)
-            else -> DefaultMediaSourceFactory(dataSourceFactory)
-                .createMediaSource(mediaItem)
+            else -> {
+                // For progressive files, optionally wrap with parallel range downloads
+                val progressiveFactory: DataSource.Factory = if (currentUseParallelConnections) {
+                    ParallelRangeDataSource.Factory(okHttpFactory)
+                } else {
+                    okHttpFactory
+                }
+                DefaultMediaSourceFactory(progressiveFactory)
+                    .createMediaSource(mediaItem)
+            }
         }
     }
 
@@ -1021,6 +1096,20 @@ class PlayerViewModel @Inject constructor(
                         )
                     }
                     updateActiveSkipInterval(pos)
+
+                    // Periodic buffer logging every 10s during playback
+                    if (player.isPlaying) {
+                        val now = System.currentTimeMillis()
+                        if (now - lastBufferLogTimeMs >= 10_000) {
+                            lastBufferLogTimeMs = now
+                            val bufAhead = (player.bufferedPosition - player.currentPosition) / 1000
+                            val loading = player.isLoading
+                            val runtime = Runtime.getRuntime()
+                            val usedMb = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024)
+                            val maxMb = runtime.maxMemory() / (1024 * 1024)
+                            Log.d(TAG, "BUFFER: ahead=${bufAhead}s, loading=$loading, heap=${usedMb}/${maxMb}MB, pos=${pos / 1000}s")
+                        }
+                    }
                 }
                 delay(500)
             }
@@ -1459,5 +1548,13 @@ class PlayerViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         releasePlayer()
+        // Clean up OkHttp connection pool on background thread
+        okHttpClient?.let { client ->
+            Thread {
+                client.connectionPool.evictAll()
+                client.dispatcher.executorService.shutdown()
+            }.start()
+            okHttpClient = null
+        }
     }
 }

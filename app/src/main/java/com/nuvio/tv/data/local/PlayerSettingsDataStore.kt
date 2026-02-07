@@ -89,12 +89,27 @@ data class SubtitleStyleSettings(
 )
 
 /**
+ * Data class representing buffer settings
+ */
+data class BufferSettings(
+    val minBufferMs: Int = 50_000,
+    val maxBufferMs: Int = 50_000,
+    val bufferForPlaybackMs: Int = 3_000,
+    val bufferForPlaybackAfterRebufferMs: Int = 9_000,
+    val targetBufferSizeMb: Int = 0, // 0 = auto (calculated from available heap)
+    val backBufferDurationMs: Int = 0,
+    val retainBackBufferFromKeyframe: Boolean = false,
+    val useParallelConnections: Boolean = true
+)
+
+/**
  * Data class representing player settings
  */
 data class PlayerSettings(
     val useLibass: Boolean = false,
     val libassRenderType: LibassRenderType = LibassRenderType.OVERLAY_OPEN_GL,
-    val subtitleStyle: SubtitleStyleSettings = SubtitleStyleSettings()
+    val subtitleStyle: SubtitleStyleSettings = SubtitleStyleSettings(),
+    val bufferSettings: BufferSettings = BufferSettings()
 )
 
 /**
@@ -131,6 +146,16 @@ class PlayerSettingsDataStore @Inject constructor(
     private val subtitleOutlineColorKey = intPreferencesKey("subtitle_outline_color")
     private val subtitleOutlineWidthKey = intPreferencesKey("subtitle_outline_width")
 
+    // Buffer settings keys
+    private val minBufferMsKey = intPreferencesKey("min_buffer_ms")
+    private val maxBufferMsKey = intPreferencesKey("max_buffer_ms")
+    private val bufferForPlaybackMsKey = intPreferencesKey("buffer_for_playback_ms")
+    private val bufferForPlaybackAfterRebufferMsKey = intPreferencesKey("buffer_for_playback_after_rebuffer_ms")
+    private val targetBufferSizeMbKey = intPreferencesKey("target_buffer_size_mb")
+    private val backBufferDurationMsKey = intPreferencesKey("back_buffer_duration_ms")
+    private val retainBackBufferFromKeyframeKey = booleanPreferencesKey("retain_back_buffer_from_keyframe")
+    private val useParallelConnectionsKey = booleanPreferencesKey("use_parallel_connections")
+
     /**
      * Flow of current player settings
      */
@@ -151,6 +176,16 @@ class PlayerSettingsDataStore @Inject constructor(
                 outlineEnabled = prefs[subtitleOutlineEnabledKey] ?: true,
                 outlineColor = prefs[subtitleOutlineColorKey] ?: Color.Black.toArgb(),
                 outlineWidth = prefs[subtitleOutlineWidthKey] ?: 2
+            ),
+            bufferSettings = BufferSettings(
+                minBufferMs = prefs[minBufferMsKey] ?: 50_000,
+                maxBufferMs = prefs[maxBufferMsKey] ?: 50_000,
+                bufferForPlaybackMs = prefs[bufferForPlaybackMsKey] ?: 3_000,
+                bufferForPlaybackAfterRebufferMs = prefs[bufferForPlaybackAfterRebufferMsKey] ?: 9_000,
+                targetBufferSizeMb = prefs[targetBufferSizeMbKey] ?: 0,
+                backBufferDurationMs = prefs[backBufferDurationMsKey] ?: 0,
+                retainBackBufferFromKeyframe = prefs[retainBackBufferFromKeyframeKey] ?: false,
+                useParallelConnections = prefs[useParallelConnectionsKey] ?: true
             )
         )
     }
@@ -252,6 +287,62 @@ class PlayerSettingsDataStore @Inject constructor(
     suspend fun setSubtitleOutlineWidth(width: Int) {
         dataStore.edit { prefs ->
             prefs[subtitleOutlineWidthKey] = width.coerceIn(1, 5)
+        }
+    }
+
+    // Buffer settings functions
+
+    fun calculateDefaultBufferSizeMb(): Int {
+        val maxHeapBytes = Runtime.getRuntime().maxMemory()
+        val thirtyPercent = (maxHeapBytes * 0.30).toLong() / (1024 * 1024)
+        return thirtyPercent.toInt().coerceIn(75, 300)
+    }
+
+    suspend fun setBufferMinBufferMs(ms: Int) {
+        dataStore.edit { prefs ->
+            prefs[minBufferMsKey] = ms.coerceIn(5_000, 120_000)
+        }
+    }
+
+    suspend fun setBufferMaxBufferMs(ms: Int) {
+        dataStore.edit { prefs ->
+            prefs[maxBufferMsKey] = ms.coerceIn(5_000, 120_000)
+        }
+    }
+
+    suspend fun setBufferForPlaybackMs(ms: Int) {
+        dataStore.edit { prefs ->
+            prefs[bufferForPlaybackMsKey] = ms.coerceIn(1_000, 30_000)
+        }
+    }
+
+    suspend fun setBufferForPlaybackAfterRebufferMs(ms: Int) {
+        dataStore.edit { prefs ->
+            prefs[bufferForPlaybackAfterRebufferMsKey] = ms.coerceIn(1_000, 60_000)
+        }
+    }
+
+    suspend fun setBufferTargetSizeMb(mb: Int) {
+        dataStore.edit { prefs ->
+            prefs[targetBufferSizeMbKey] = mb.coerceAtLeast(0)
+        }
+    }
+
+    suspend fun setBufferBackBufferDurationMs(ms: Int) {
+        dataStore.edit { prefs ->
+            prefs[backBufferDurationMsKey] = ms.coerceIn(0, 120_000)
+        }
+    }
+
+    suspend fun setBufferRetainBackBufferFromKeyframe(retain: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[retainBackBufferFromKeyframeKey] = retain
+        }
+    }
+
+    suspend fun setUseParallelConnections(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[useParallelConnectionsKey] = enabled
         }
     }
 }
