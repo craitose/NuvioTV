@@ -43,8 +43,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,7 +66,10 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import coil.request.ImageRequest
+import coil.decode.SvgDecoder
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import com.nuvio.tv.ui.util.localizeEpisodeTitle
 import androidx.tv.material3.Border
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
@@ -91,6 +99,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.res.stringResource
 import com.nuvio.tv.R
+
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -178,9 +187,7 @@ fun StreamScreen(
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(NuvioColors.Background)
+        modifier = Modifier.fillMaxSize()
     ) {
         // Full screen backdrop
         StreamBackdrop(
@@ -303,35 +310,11 @@ private fun StreamBackdrop(
                 .build()
         }
     }
-    val alpha by animateFloatAsState(
-        targetValue = if (isLoading) 0.3f else 0.5f,
+    val imageAlpha by animateFloatAsState(
+        targetValue = if (isLoading) 0.7f else 0.5f,
         animationSpec = tween(500),
-        label = "backdrop_alpha"
+        label = "backdrop_image_alpha"
     )
-    val leftGradient = remember(backgroundColor) {
-        Brush.horizontalGradient(
-            colorStops = arrayOf(
-                0.0f to backgroundColor,
-                0.25f to backgroundColor.copy(alpha = 0.95f),
-                0.4f to backgroundColor.copy(alpha = 0.8f),
-                0.5f to backgroundColor.copy(alpha = 0.5f),
-                0.6f to Color.Transparent,
-                1.0f to Color.Transparent
-            )
-        )
-    }
-    val rightGradient = remember(backgroundColor) {
-        Brush.horizontalGradient(
-            colorStops = arrayOf(
-                0.0f to Color.Transparent,
-                0.4f to Color.Transparent,
-                0.5f to backgroundColor.copy(alpha = 0.3f),
-                0.7f to backgroundColor.copy(alpha = 0.7f),
-                0.85f to backgroundColor.copy(alpha = 0.9f),
-                1.0f to backgroundColor
-            )
-        )
-    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Backdrop image
@@ -339,32 +322,46 @@ private fun StreamBackdrop(
             AsyncImage(
                 model = backdropModel,
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = imageAlpha },
                 contentScale = ContentScale.Crop
             )
         }
 
-        // Dark overlay
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(NuvioColors.Background.copy(alpha = alpha))
-        )
-
-        // Left gradient for text readability
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(leftGradient)
-        )
-
-        // Right gradient for streams panel
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(rightGradient)
+        StreamGradientLayer(
+            bgColor = backgroundColor,
+            modifier = Modifier.fillMaxSize()
         )
     }
+}
+
+@Composable
+private fun StreamGradientLayer(
+    bgColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .drawWithCache {
+                val combinedGradient = Brush.horizontalGradient(
+                    colorStops = arrayOf(
+                        0.0f to bgColor,
+                        0.15f to bgColor.copy(alpha = 0.85f),
+                        0.30f to bgColor.copy(alpha = 0.40f),
+                        0.50f to bgColor.copy(alpha = 0.15f),
+                        0.70f to bgColor.copy(alpha = 0.40f),
+                        0.85f to bgColor.copy(alpha = 0.85f),
+                        1.0f to bgColor
+                    ),
+                    startX = 0f,
+                    endX = size.width
+                )
+                onDrawBehind {
+                    drawRect(brush = combinedGradient)
+                }
+            }
+    )
 }
 
 @Composable
@@ -382,11 +379,13 @@ private fun LeftContentSection(
 ) {
     val context = LocalContext.current
     var logoLoadFailed by remember(logo) { mutableStateOf(false) }
+    val density = LocalDensity.current
     val logoModel = remember(context, logo) {
         logo?.let { image ->
             ImageRequest.Builder(context)
                 .data(image)
                 .crossfade(false)
+                .decoderFactory(SvgDecoder.Factory())
                 .build()
         }
     }
@@ -427,6 +426,7 @@ private fun LeftContentSection(
             // Show episode info or movie info
             if (isEpisode && season != null && episode != null) {
                 // Episode info
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "S$season E$episode",
                     style = MaterialTheme.typography.titleLarge,
@@ -436,7 +436,7 @@ private fun LeftContentSection(
                 if (episodeName != null) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = episodeName,
+                        text = episodeName.localizeEpisodeTitle(LocalContext.current),
                         style = MaterialTheme.typography.bodyLarge,
                         color = NuvioColors.TextPrimary,
                         maxLines = 2,
@@ -446,8 +446,15 @@ private fun LeftContentSection(
                 }
                 if (runtime != null) {
                     Spacer(modifier = Modifier.height(4.dp))
+                    val runtimeText = if (runtime >= 60) {
+                        val hours = runtime / 60
+                        val mins = runtime % 60
+                        if (mins > 0) "${hours}h ${mins}m" else "${hours}h"
+                    } else {
+                        "${runtime}m"
+                    }
                     Text(
-                        text = "${runtime}m",
+                        text = runtimeText,
                         style = MaterialTheme.typography.bodyMedium,
                         color = NuvioTheme.extendedColors.textSecondary,
                         textAlign = TextAlign.Center
@@ -455,13 +462,12 @@ private fun LeftContentSection(
                 }
             } else {
                 // Movie info - genres and year
+                Spacer(modifier = Modifier.height(8.dp))
                 if (infoText.isNotEmpty()) {
                     Text(
                         text = infoText,
                         style = MaterialTheme.typography.bodyLarge,
                         color = NuvioTheme.extendedColors.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center
                     )
                 }
@@ -859,6 +865,7 @@ private fun StreamCard(
             ImageRequest.Builder(context)
                 .data(logo)
                 .crossfade(false)
+                .decoderFactory(SvgDecoder.Factory())
                 .build()
         }
     }

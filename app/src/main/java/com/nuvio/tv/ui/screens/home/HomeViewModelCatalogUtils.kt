@@ -13,7 +13,7 @@ internal fun HomeViewModel.buildHomeCatalogLoadSignature(addons: List<Addon>): S
     val addonCatalogSignature = addons
         .flatMap { addon ->
             addon.catalogs.map { catalog ->
-                "${addon.id}|${addon.baseUrl}|${catalog.apiType}|${catalog.id}|${catalog.name}"
+                "${addon.id}|${addon.baseUrl}|${catalog.apiType}|${catalog.id}|${catalog.name}|${catalog.showInHome}|${catalog.hasExplicitShowInHome}"
             }
         }
         .sorted()
@@ -65,7 +65,7 @@ private fun HomeViewModel.buildDefaultCatalogOrder(addons: List<Addon>): List<St
     addons.forEach { addon ->
         addon.catalogs
             .filterNot {
-                it.isSearchOnlyCatalog() || isCatalogDisabled(
+                !it.shouldShowOnHome() || isCatalogDisabled(
                     addonBaseUrl = addon.baseUrl,
                     addonId = addon.id,
                     type = it.apiType,
@@ -111,7 +111,12 @@ internal fun HomeViewModel.disableCatalogKey(
 }
 
 internal fun CatalogDescriptor.isSearchOnlyCatalog(): Boolean {
-    return extra.any { extra -> extra.name == "search" && extra.isRequired }
+    return extra.any { extra -> extra.name.equals("search", ignoreCase = true) && extra.isRequired }
+}
+
+internal fun CatalogDescriptor.shouldShowOnHome(): Boolean {
+    if (isSearchOnlyCatalog()) return false
+    return !hasExplicitShowInHome || showInHome
 }
 
 internal fun MetaPreview.hasHeroArtwork(): Boolean {

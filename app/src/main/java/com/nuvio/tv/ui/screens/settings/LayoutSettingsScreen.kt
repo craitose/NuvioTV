@@ -302,17 +302,19 @@ fun LayoutSettingsContent(
                             onFocused = { focusedSection = LayoutSettingsSection.HOME_CONTENT }
                         )
                     }
-                    CompactToggleRow(
-                        title = stringResource(R.string.layout_show_hero),
-                        subtitle = stringResource(R.string.layout_show_hero_sub),
-                        checked = uiState.heroSectionEnabled,
-                        onToggle = {
-                            viewModel.onEvent(
-                                LayoutSettingsEvent.SetHeroSectionEnabled(!uiState.heroSectionEnabled)
-                            )
-                        },
-                        onFocused = { focusedSection = LayoutSettingsSection.HOME_CONTENT }
-                    )
+                    if (uiState.selectedLayout != HomeLayout.MODERN) {
+                        CompactToggleRow(
+                            title = stringResource(R.string.layout_show_hero),
+                            subtitle = stringResource(R.string.layout_show_hero_sub),
+                            checked = uiState.heroSectionEnabled,
+                            onToggle = {
+                                viewModel.onEvent(
+                                    LayoutSettingsEvent.SetHeroSectionEnabled(!uiState.heroSectionEnabled)
+                                )
+                            },
+                            onFocused = { focusedSection = LayoutSettingsSection.HOME_CONTENT }
+                        )
+                    }
                     CompactToggleRow(
                         title = stringResource(R.string.layout_show_discover),
                         subtitle = stringResource(R.string.layout_show_discover_sub),
@@ -419,6 +421,18 @@ fun LayoutSettingsContent(
                                 LayoutSettingsEvent.SetPreferExternalMetaAddonDetail(
                                     !uiState.preferExternalMetaAddonDetail
                                 )
+                            )
+                        },
+                        onFocused = { focusedSection = LayoutSettingsSection.DETAIL_PAGE }
+                    )
+
+                    CompactToggleRow(
+                        title = stringResource(R.string.layout_show_full_release_date),
+                        subtitle = stringResource(R.string.layout_show_full_release_date_sub),
+                        checked = uiState.showFullReleaseDate,
+                        onToggle = {
+                            viewModel.onEvent(
+                                LayoutSettingsEvent.SetShowFullReleaseDate(!uiState.showFullReleaseDate)
                             )
                         },
                         onFocused = { focusedSection = LayoutSettingsSection.DETAIL_PAGE }

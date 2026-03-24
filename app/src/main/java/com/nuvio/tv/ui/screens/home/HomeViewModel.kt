@@ -1,18 +1,25 @@
 package com.nuvio.tv.ui.screens.home
 
+import android.os.SystemClock
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nuvio.tv.core.player.StreamAutoPlayPolicy
 import com.nuvio.tv.core.tmdb.TmdbMetadataService
 import com.nuvio.tv.core.tmdb.TmdbService
+import com.nuvio.tv.data.local.AuthSessionNoticeDataStore
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
+import com.nuvio.tv.data.local.PlayerSettingsDataStore
+import com.nuvio.tv.data.local.StartupAuthNotice
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
 import com.nuvio.tv.data.local.TraktSettingsDataStore
+import com.nuvio.tv.data.local.WatchedItemsPreferences
 import com.nuvio.tv.data.trailer.TrailerService
 import com.nuvio.tv.domain.model.Addon
 import com.nuvio.tv.domain.model.CatalogDescriptor
 import com.nuvio.tv.domain.model.CatalogRow
 import com.nuvio.tv.domain.model.LibraryEntryInput
+import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.TmdbSettings
 import com.nuvio.tv.domain.repository.AddonRepository
@@ -26,6 +33,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -41,25 +50,34 @@ class HomeViewModel @Inject constructor(
     internal val libraryRepository: LibraryRepository,
     internal val metaRepository: MetaRepository,
     internal val layoutPreferenceDataStore: LayoutPreferenceDataStore,
+    internal val playerSettingsDataStore: PlayerSettingsDataStore,
     internal val tmdbSettingsDataStore: TmdbSettingsDataStore,
     internal val traktSettingsDataStore: TraktSettingsDataStore,
+    internal val authSessionNoticeDataStore: AuthSessionNoticeDataStore,
     internal val tmdbService: TmdbService,
     internal val tmdbMetadataService: TmdbMetadataService,
-    internal val trailerService: TrailerService
+    internal val trailerService: TrailerService,
+    internal val watchedItemsPreferences: WatchedItemsPreferences
 ) : ViewModel() {
     companion object {
         internal const val TAG = "HomeViewModel"
+        internal const val STARTUP_GRACE_PERIOD_MS = 3_000L
+        internal const val CONTINUE_WATCHING_ENRICHMENT_GRACE_PERIOD_MS = 1_000L
         private const val CONTINUE_WATCHING_WINDOW_MS = 30L * 24 * 60 * 60 * 1000
         private const val MAX_RECENT_PROGRESS_ITEMS = 300
         private const val MAX_NEXT_UP_LOOKUPS = 24
         private const val MAX_NEXT_UP_CONCURRENCY = 4
         private const val MAX_CATALOG_LOAD_CONCURRENCY = 4
         internal const val EXTERNAL_META_PREFETCH_FOCUS_DEBOUNCE_MS = 220L
+        internal const val EXTERNAL_META_PREFETCH_ADJACENT_DEBOUNCE_MS = 120L
         internal const val MAX_POSTER_STATUS_OBSERVERS = 24
     }
 
     internal val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+    val effectiveAutoplayEnabled = playerSettingsDataStore.playerSettings
+        .map(StreamAutoPlayPolicy::isEffectivelyEnabled)
+        .distinctUntilChanged()
     internal val _fullCatalogRows = MutableStateFlow<List<CatalogRow>>(emptyList())
     val fullCatalogRows: StateFlow<List<CatalogRow>> = _fullCatalogRows.asStateFlow()
 
@@ -71,6 +89,10 @@ class HomeViewModel @Inject constructor(
 
     internal val _loadingCatalogs = MutableStateFlow<Set<String>>(emptySet())
     val loadingCatalogs: StateFlow<Set<String>> = _loadingCatalogs.asStateFlow()
+
+    internal val _enrichingItemId = MutableStateFlow<String?>(null)
+    val enrichingItemId: StateFlow<String?> = _enrichingItemId.asStateFlow()
+    internal fun setEnrichingItemId(id: String?) { _enrichingItemId.value = id }
 
     internal val catalogsMap = linkedMapOf<String, CatalogRow>()
     internal val catalogOrder = mutableListOf<String>()
@@ -101,17 +123,32 @@ class HomeViewModel @Inject constructor(
     internal var heroEnrichmentJob: Job? = null
     internal var lastHeroEnrichmentSignature: String? = null
     internal var lastHeroEnrichedItems: List<MetaPreview> = emptyList()
+    internal var heroItemOrder: List<String> = emptyList()
     internal val prefetchedExternalMetaIds = Collections.synchronizedSet(mutableSetOf<String>())
     internal val externalMetaPrefetchInFlightIds = Collections.synchronizedSet(mutableSetOf<String>())
     internal var externalMetaPrefetchJob: Job? = null
     internal var pendingExternalMetaPrefetchItemId: String? = null
+    internal val prefetchedTmdbIds = Collections.synchronizedSet(mutableSetOf<String>())
+    internal val cwMetaCache = Collections.synchronizedMap(mutableMapOf<String, Meta?>())
+    internal val cwTmdbIdCache = Collections.synchronizedMap(mutableMapOf<String, String?>())
+    internal val cwNextUpResolutionCache = Collections.synchronizedMap(mutableMapOf<String, NextUpResolution?>())
+    internal var tmdbEnrichFocusJob: Job? = null
+    internal var pendingTmdbEnrichItemId: String? = null
+    internal var adjacentItemPrefetchJob: Job? = null
+    internal var pendingAdjacentPrefetchItemId: String? = null
     internal val posterLibraryObserverJobs = mutableMapOf<String, Job>()
     internal val movieWatchedObserverJobs = mutableMapOf<String, Job>()
+    internal var movieWatchedBatchJob: Job? = null
+    internal var lastMovieWatchedItemKeys: Set<String> = emptySet()
+    internal var libraryTabsObserverJob: Job? = null
     internal var activePosterListPickerInput: LibraryEntryInput? = null
+    internal var posterStatusObservationEnabled: Boolean = false
     @Volatile
     internal var externalMetaPrefetchEnabled: Boolean = false
+    internal val startupStartedAtMs: Long = SystemClock.elapsedRealtime()
     @Volatile
     internal var startupGracePeriodActive: Boolean = true
+    internal var startupAuthNoticeJob: Job? = null
     val trailerPreviewUrls: Map<String, String>
         get() = trailerPreviewUrlsState
     val trailerPreviewAudioUrls: Map<String, String>
@@ -124,12 +161,25 @@ class HomeViewModel @Inject constructor(
         loadDisabledHomeCatalogPreference()
         observeLibraryState()
         observeTmdbSettings()
+        observeStartupAuthNotice()
         loadContinueWatching()
         observeInstalledAddons()
         viewModelScope.launch {
-            delay(3000)
+            delay(STARTUP_GRACE_PERIOD_MS)
             startupGracePeriodActive = false
         }
+    }
+
+    internal fun remainingStartupGraceMs(nowMs: Long = SystemClock.elapsedRealtime()): Long {
+        if (!startupGracePeriodActive) return 0L
+        return (STARTUP_GRACE_PERIOD_MS - (nowMs - startupStartedAtMs)).coerceAtLeast(0L)
+    }
+
+    internal fun remainingContinueWatchingEnrichmentGraceMs(
+        nowMs: Long = SystemClock.elapsedRealtime()
+    ): Long {
+        return (CONTINUE_WATCHING_ENRICHMENT_GRACE_PERIOD_MS - (nowMs - startupStartedAtMs))
+            .coerceAtLeast(0L)
     }
 
     private fun observeLayoutPreferences() = observeLayoutPreferencesPipeline()
@@ -152,11 +202,40 @@ class HomeViewModel @Inject constructor(
 
     fun onItemFocus(item: MetaPreview) = onItemFocusPipeline(item)
 
+    fun preloadAdjacentItem(item: MetaPreview) = preloadAdjacentItemPipeline(item)
+
     private fun loadHomeCatalogOrderPreference() = loadHomeCatalogOrderPreferencePipeline()
 
     private fun loadDisabledHomeCatalogPreference() = loadDisabledHomeCatalogPreferencePipeline()
 
     private fun observeTmdbSettings() = observeTmdbSettingsPipeline()
+
+    private fun observeStartupAuthNotice() {
+        viewModelScope.launch {
+            authSessionNoticeDataStore.pendingNotice.collect { notice ->
+                if (notice == null) return@collect
+                _uiState.update { state ->
+                    if (state.startupAuthNotice == notice) state else state.copy(startupAuthNotice = notice)
+                }
+                startupAuthNoticeJob?.cancel()
+                startupAuthNoticeJob = viewModelScope.launch {
+                    delay(3200)
+                    clearStartupAuthNotice(notice)
+                }
+                authSessionNoticeDataStore.consumeNotice(notice)
+            }
+        }
+    }
+
+    private fun clearStartupAuthNotice(notice: StartupAuthNotice) {
+        _uiState.update { state ->
+            if (state.startupAuthNotice == notice) {
+                state.copy(startupAuthNotice = null)
+            } else {
+                state
+            }
+        }
+    }
 
     fun onEvent(event: HomeEvent) {
         when (event) {
@@ -172,7 +251,9 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun loadContinueWatching() = loadContinueWatchingPipeline()
+    private fun loadContinueWatching() {
+        loadContinueWatchingPipeline()
+    }
 
     private fun removeContinueWatching(
         contentId: String,
@@ -291,7 +372,9 @@ class HomeViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        startupAuthNoticeJob?.cancel()
         posterStatusReconcileJob?.cancel()
+        movieWatchedBatchJob?.cancel()
         cancelInFlightCatalogLoads()
         posterLibraryObserverJobs.values.forEach { it.cancel() }
         movieWatchedObserverJobs.values.forEach { it.cancel() }

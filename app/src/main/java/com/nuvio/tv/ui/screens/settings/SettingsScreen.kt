@@ -66,6 +66,7 @@ internal enum class SettingsCategory {
     PLUGINS,
     INTEGRATION,
     PLAYBACK,
+    ADVANCED,
     TRAKT,
     ABOUT,
     DEBUG
@@ -162,6 +163,13 @@ private fun rememberSettingsSectionSpecs() = listOf(
         destination = SettingsSectionDestination.Inline
     ),
     SettingsSectionSpec(
+        category = SettingsCategory.ADVANCED,
+        title = stringResource(R.string.settings_advanced),
+        icon = Icons.Default.Build,
+        subtitle = stringResource(R.string.settings_advanced_subtitle),
+        destination = SettingsSectionDestination.Inline
+    ),
+    SettingsSectionSpec(
         category = SettingsCategory.DEBUG,
         title = stringResource(R.string.settings_debug),
         icon = Icons.Default.BugReport,
@@ -175,6 +183,8 @@ fun SettingsScreen(
     showBuiltInHeader: Boolean = true,
     onNavigateToTrakt: () -> Unit = {},
     onNavigateToAuthQrSignIn: () -> Unit = {},
+    onNavigateToManageProfiles: () -> Unit = {},
+    onNavigateToSupportersContributors: () -> Unit = {},
     profileViewModel: ProfileSettingsViewModel = hiltViewModel()
 ) {
     val isPrimaryProfileActive by profileViewModel.isPrimaryProfileActive.collectAsStateWithLifecycle()
@@ -206,6 +216,7 @@ fun SettingsScreen(
                 SettingsCategory.LAYOUT to FocusRequester(),
                 SettingsCategory.INTEGRATION to FocusRequester(),
                 SettingsCategory.PLAYBACK to FocusRequester(),
+                SettingsCategory.ADVANCED to FocusRequester(),
                 SettingsCategory.ABOUT to FocusRequester()
             )
     }
@@ -249,7 +260,6 @@ fun SettingsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(NuvioColors.Background)
             .padding(
                 start = 32.dp,
                 end = 32.dp,
@@ -270,7 +280,7 @@ fun SettingsScreen(
                 LazyColumn(
                     modifier = Modifier
                         .focusRequester(railContainerFocusRequester)
-                        .width(282.dp)
+                        .width(220.dp)
                         .fillMaxHeight()
                         .onFocusChanged { state ->
                             val justGainedFocus = !railHadFocus && state.hasFocus
@@ -358,7 +368,9 @@ fun SettingsScreen(
                         }
                 ) {
                     when (selectedCategory) {
-                        SettingsCategory.PROFILES -> ProfileSettingsContent()
+                        SettingsCategory.PROFILES -> ProfileSettingsContent(
+                            onManageProfiles = onNavigateToManageProfiles
+                        )
                         SettingsCategory.APPEARANCE -> ThemeSettingsContent(
                             initialFocusRequester = if (allowDetailAutofocus) {
                                 contentFocusRequesters[SettingsCategory.APPEARANCE]
@@ -380,6 +392,13 @@ fun SettingsScreen(
                                 null
                             }
                         )
+                        SettingsCategory.ADVANCED -> NetworkSettingsContent(
+                            initialFocusRequester = if (allowDetailAutofocus) {
+                                contentFocusRequesters[SettingsCategory.ADVANCED]
+                            } else {
+                                null
+                            }
+                        )
                         SettingsCategory.INTEGRATION -> IntegrationSettingsContent(
                             selectedSection = integrationSection,
                             onSelectSection = { integrationSection = it },
@@ -395,6 +414,7 @@ fun SettingsScreen(
                             autoFocusEnabled = allowDetailAutofocus
                         )
                         SettingsCategory.ABOUT -> AboutSettingsContent(
+                            onNavigateToSupportersContributors = onNavigateToSupportersContributors,
                             initialFocusRequester = if (allowDetailAutofocus) {
                                 contentFocusRequesters[SettingsCategory.ABOUT]
                             } else {
