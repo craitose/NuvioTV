@@ -174,6 +174,8 @@ internal fun PlayerRuntimeController.updateAvailableTracks(tracks: Tracks) {
         audioTracks = audioTracks,
         subtitleTracks = subtitleTracks
     )
+    // Forced subtitle autoselect (runs before normal auto-sub)
+    trySelectForcedSubtitleIfRequested()
     tryAutoSelectPreferredSubtitleFromAvailableTracks()
     maybeAdjustLibassPipelineForTracks(tracks)
 }
@@ -769,3 +771,85 @@ internal fun PlayerRuntimeController.applySubtitlePreferences(preferred: String,
         player.trackSelectionParameters = builder.build()
     }
 }
+
+internal fun PlayerRuntimeController.trySelectForcedSubtitleIfRequested() {
+    val preferred = _uiState.value.subtitleStyle.preferredLanguage.lowercase()
+    if (preferred != SUBTITLE_LANGUAGE_FORCED) return
+    if (autoSubtitleSelected) return
+
+    val state = _uiState.value
+    val tracks = state.subtitleTracks
+    if (tracks.isEmpty()) return
+
+
+    val audioLangCode = state.audioTracks
+        .getOrNull(state.selectedAudioTrackIndex)
+        ?.language
+        ?.lowercase()
+
+    if (audioLangCode.isNullOrBlank()) {
+
+        autoSubtitleSelected = true
+        disableSubtitles()
+        _uiState.update {
+            it.copy(
+                selectedSubtitleTrackIndex = -1,
+                selectedAddonSubtitle = null
+            )
+        }
+        return
+    }
+
+
+    val audioLangName = languageCodeToName(audioLangCode)?.lowercase()
+
+    fun matchesAudioLanguage(track: TrackInfo): Boolean {
+        val trackLangCode = track.language?.lowercase()
+        val trackName = track.name.lowercase()
+
+        // Match by language code if present
+        if (!trackLangCode.isNullOrBlank()) {
+            if (PlayerSubtitleUtils.matchesLanguageCode(trackLangCode, audioLangCode)) {
+                return true
+            }
+        }
+
+        // Match by human-readable language name in the track name, e.g. "English [Forced]"
+        if (!audioLangName.isNullOrBlank() && trackName.contains(audioLangName)) {
+            return true
+        }
+
+        return false
+    }
+
+    // 3. Find a forced subtitle that matches the audio language
+    val matchingForcedIndex = tracks.indexOfFirst { track ->
+        track.isForced && matchesAudioLanguage(track)
+    }
+
+    if (matchingForcedIndex >= 0) {
+        autoSubtitleSelected = true
+        selectSubtitleTrack(matchingForcedIndex)
+        _uiState.update {
+            it.copy(
+                selectedSubtitleTrackIndex = matchingForcedIndex,
+                selectedAddonSubtitle = null
+            )
+        }
+        return
+    }
+
+    // 4. No matching forced subtitle → disable subtitles
+    autoSubtitleSelected = true
+    disableSubtitles()
+    _uiState.update {
+        it.copy(
+            selectedSubtitleTrackIndex = -1,
+            selectedAddonSubtitle = null
+        )
+    }
+}
+
+
+
+
